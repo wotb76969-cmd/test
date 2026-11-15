@@ -162,7 +162,8 @@ jobs:
           AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)
           "$APKSIGNER" verify --verbose --print-certs dist/ChelsyAI_Android_0.9.3.apk
           "$AAPT" dump permissions dist/ChelsyAI_Android_0.9.3.apk
-          "$AAPT" dump xmltree dist/ChelsyAI_Android_0.9.3.apk --file AndroidManifest.xml > manifest.txt
+          "$AAPT" dump xmltree dist/ChelsyAI_Android_0.9.3.apk AndroidManifest.xml > manifest.txt
+          cat manifest.txt | grep -E "allowBackup|usesCleartextTraffic|debuggable|networkSecurityConfig" || true
           grep -q 'android:allowBackup(.*)=(type 0x12)0x0' manifest.txt
           grep -q 'android:usesCleartextTraffic(.*)=(type 0x12)0x0' manifest.txt
           if grep -q 'android:debuggable(.*)=(type 0x12)0xffffffff' manifest.txt; then echo "APK is debuggable"; exit 1; fi
