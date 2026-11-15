@@ -1,0 +1,18 @@
+CHELSY AI DESKTOP 0.5 - BRANDED RELEASE
+
+This ZIP contains the FULL WINDOWS BUILD PROJECT, NOT a compiled .exe.
+
+1. Extract to E:\ChelsyBuild05 (prefer a simple ASCII folder name).
+2. Install Python 3.11, Inno Setup 6/7 and Ollama.
+3. Run BUILD_INSTALLER.bat.
+4. On SUCCESS, open installer\ChelsyAI_Setup_0.5.exe.
+5. If Inno Setup compiler is not found, open ChelsyAI.iss in Inno Setup and press F9 after the PyInstaller step has completed.
+6. Launch Chelsy AI from desktop. It will open the browser at localhost:7860.
+
+Original supplied Chelsy AI logo is in assets\chelsy_logo.png.
+Windows application and setup icons are in assets\chelsy.ico.
+The data folder remains at %LOCALAPPDATA%\ChelsyAI\data. Do not delete it.
+Ollama must be installed and the desired model downloaded separately.
+Remote PC connection and Android client are NOT included in this desktop UI release.
+
+Note: Build on Windows, PyInstaller cannot reliably cross-compile Windows EXE on Linux.

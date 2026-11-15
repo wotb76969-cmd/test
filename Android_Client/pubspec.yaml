@@ -1,0 +1,16 @@
+name: chelsy_ai_client
+description: Chelsy AI 0.9 - private Host/Client Android app
+publish_to: none
+version: 0.9.0+9
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.18.3
+  http: ^1.6.0
+  shared_preferences: ^2.5.3
+flutter:
+  uses-material-design: true
+  assets:
+    - chelsy_logo.png

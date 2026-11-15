@@ -1,0 +1,13 @@
+CHELSY AI DESKTOP 0.6 — FULL WINDOWS BUILD PROJECT
+
+1. Extract archive to E:\ChelsyBuild06 (any simple ASCII path).
+2. Open folder ChelsyAI_0.6.
+3. Double-click BUILD_INSTALLER.bat.
+4. Script tests and packages the application. Python 3.11 and Inno Setup 6/7 must be installed on the build computer.
+5. On success: installer\ChelsyAI_Setup_0.6.exe.
+6. Install over existing Chelsy AI. Don't delete %LOCALAPPDATA%\ChelsyAI (holds user data).
+7. Ollama remains required to run the local AI model.
+
+The ZIP contains complete source and build recipe, NOT a precompiled Windows EXE.
+Second-PC access and Android are not included in this UI-only release.
+Read RELEASE_0.6_RU.md for changes and limitations.

@@ -1,0 +1,67 @@
+name: Build Chelsy AI 0.9 installers
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Build desktop and client EXE installers
+        shell: pwsh
+        working-directory: ChelsyAI_0.9_Windows
+        run: ./BUILD_INSTALLER.ps1
+      - name: Upload Windows EXE installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChelsyAI-0.9-Windows-EXE
+          path: ChelsyAI_0.9_Windows/installer/*.exe
+          if-no-files-found: error
+          retention-days: 14
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare Android sources
+        working-directory: Android_Client
+        shell: bash
+        run: |
+          flutter create --platforms=android --project-name chelsy_ai_client --org ai.chelsy .
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          s=p.read_text()
+          if 'android.permission.INTERNET' not in s:
+              s=s.replace('<application','<uses-permission android:name="android.permission.INTERNET" />\n    <application',1)
+          p.write_text(s)
+          PY
+          flutter pub get
+      - name: Build beta Android APK
+        working-directory: Android_Client
+        shell: bash
+        run: >-
+          flutter build apk --release
+          --dart-define=SUPABASE_URL=https://mbhqpgmhkrypxevaboih.supabase.co
+          --dart-define=SUPABASE_KEY=sb_publishable_DGCT89JC46vkWcgsV0Wakg_3spLx22r
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChelsyAI-0.9-Android-APK
+          path: Android_Client/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 14

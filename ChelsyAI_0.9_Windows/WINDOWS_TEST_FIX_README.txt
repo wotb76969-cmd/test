@@ -1,0 +1,1 @@
+Windows test fix: SQLite connections now explicitly close before TemporaryDirectory cleanup. Tests now include connection-close regression coverage. Unpack and run BUILD_INSTALLER.bat. Preserve %LOCALAPPDATA%\ChelsyAI. This is source code, not a prebuilt Windows EXE.

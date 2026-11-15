@@ -1,0 +1,22 @@
+CHELSY AI 0.5 — ЕДИНЫЙ УСТАНОВЩИК ДЛЯ WINDOWS
+
+ЭТО АРХИВ ДЛЯ СБОРКИ УСТАНОВЩИКА, НЕ САМ ГОТОВЫЙ EXE.
+
+1. Распакуйте папку на диск, например E:\ChelsyBuild05.
+2. Проверьте Python 3.11 и наличие Inno Setup Compiler 6/7.
+3. Дважды нажмите BUILD_INSTALLER.bat.
+4. После SUCCESS запустите installer\ChelsyAI_Setup_0.5.exe.
+5. При обновлении закрывайте Chelsy AI перед установкой.
+
+Если ISCC.exe не найден, откройте ChelsyAI.iss в Inno Setup Compiler и нажмите F9.
+Повторная сборка через PyInstaller при этом не нужна.
+
+При обновлении данные сохраняются по адресу:
+%LOCALAPPDATA%\ChelsyAI\data
+Не удаляйте эту папку!
+
+Для ответов нужна Ollama и модель, например:
+ollama pull llama3.2:1b
+
+В этой версии второй ПК и Android ещё НЕ подключены.
+Проверить программу полностью нужно на Windows.
