@@ -85,7 +85,7 @@ ChelsyDB.exe rollback 1      # вернуть состояние до обнов
 ## 7. Сборка из исходников
 
 - Windows: `BUILD_INSTALLER.bat` (Python 3.11 + Inno Setup 6). Сначала выполняются все тесты; при ошибке сборка останавливается. Подпись: переменные `CHELSY_SIGN_PFX`, `CHELSY_SIGN_PASSWORD`.
-- Android: `Android_Client\BUILD_ANDROID_APK.bat` (Flutter 3.50, Android SDK, JDK 17, `android\key.properties`).
+- Android: `Android_Client\BUILD_ANDROID_APK.bat` (Flutter 3.50, Android SDK, JDK 21, `android\key.properties`).
 - Автоматически: GitHub Actions `.github/workflows/build-clients.yml` (артефакты `ChelsyAI-0.9.3-Windows`, `ChelsyAI-0.9.3-Android`). Секреты для подписи описаны в начале файла.
 
 ## 8. Решение проблем

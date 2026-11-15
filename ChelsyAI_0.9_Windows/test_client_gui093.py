@@ -20,6 +20,8 @@ class ClientGuiSmoke(unittest.TestCase):
         os.environ['LOCALAPPDATA'] = self.tmp.name
 
     def tearDown(self):
+        import supabase_auth
+        supabase_auth.allow_bundled_config(False)   # the GUI enables it process-wide; do not leak into other tests
         if self.old is None:
             os.environ.pop('LOCALAPPDATA', None)
         else:

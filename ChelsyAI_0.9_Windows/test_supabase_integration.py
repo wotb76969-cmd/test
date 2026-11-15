@@ -14,6 +14,7 @@ class SupabaseIntegrationTests(unittest.TestCase):
         os.environ['LOCALAPPDATA'] = self.tmp.name
         os.environ.pop('CHELSY_SUPABASE_URL',None)
         os.environ.pop('CHELSY_SUPABASE_PUBLISHABLE_KEY',None)
+        sa.allow_bundled_config(False)  # 0.9.3: bundled config is opt-in (Windows Client only)
 
     def tearDown(self):
         if self.old is None: os.environ.pop('LOCALAPPDATA',None)

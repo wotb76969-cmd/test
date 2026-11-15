@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 REM Chelsy AI 0.9.3 - local release APK build.
-REM Requires: Flutter 3.50+, Android SDK, JDK 17 and android\key.properties (see key.properties.example).
+REM Requires: Flutter 3.50+, Android SDK, JDK 21 and android\key.properties (see key.properties.example).
 where flutter >nul 2>nul
 if errorlevel 1 (
   echo Flutter SDK missing. Install Flutter and Android SDK, then run: flutter doctor
