@@ -1,3 +1,16 @@
+# Chelsy AI 0.9.3 — начни здесь
+
+1. `ChelsyAI_0.9_Windows/README_0.9.3_RU.md` — установка, запуск, Tailscale, Supabase, модели, исследования.
+2. `AUDIT_0.9.3_RU.md` — аудит 0.9.2 и план изменений.
+3. `SECURITY_0.9.3_RU.md` — модель безопасности Windows/Android/Host.
+4. `TEST_REPORT_0.9.3_RU.md` — что реально проверено и что нужно проверить на устройствах.
+5. `RELEASE_NOTES_RU.md` — список изменений.
+
+Сборка установщиков: `ChelsyAI_0.9_Windows/BUILD_INSTALLER.bat`, `Android_Client/BUILD_ANDROID_APK.bat` или GitHub Actions (`.github/workflows/build-clients.yml`).
+
+---
+Предыдущая версия этого файла (0.9.2):
+
 # Chelsy AI 0.9 — Host, Windows Client, Android Client, Cloud Sync
 
 **Это исходный проект и скрипты сборки, а не готовые EXE/APK.** Для Windows-сборки требуется ПК Windows 10/11 x64; для APK — Flutter + Android SDK. Сборка и проверка на двух реальных устройствах ещё не проводилась.
