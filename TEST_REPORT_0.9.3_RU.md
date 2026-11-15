@@ -42,14 +42,17 @@
 
 | Что | Почему | Как проверить |
 |---|---|---|
-| Сборка `ChelsyAI_Host_Setup_0.9.3.exe`, `ChelsyAI_Client_Setup_0.9.3.exe` | нет Windows | GitHub Actions job `windows` или `BUILD_INSTALLER.bat` на Windows |
-| Сборка `ChelsyAI_Android_0.9.3.apk` | Android SDK/Gradle-плагин недоступны (`dl.google.com` заблокирован) | job `android` или `BUILD_ANDROID_APK.bat` |
+| Установка и запуск EXE/APK на реальных Windows-ПК и телефоне | нет устройств | ручной сценарий ниже |
 | Качество ответов настоящих моделей | нет Ollama/GPU | `python model_eval.py` на ноутбуке |
 | Реальный Supabase-проект, вход, синхронизация | нет доступа к проекту | применить 003, войти с сайта/Windows/Android |
 | Tailscale Serve, телефон, отключение сервера | нет устройств | сценарий ниже |
 | Реальный Brave Search и обход сайтов | исходящая сеть через прокси | ключ на ноутбуке, «Изучи документацию FastAPI» |
 
-**Сборка не выполнена:** GitHub-ветка не отправлена — у Claude нет доступа на запись в репозиторий (HTTP 403). После восстановления доступа push в `claude/**` запустит CI автоматически.
+## Сборка в GitHub Actions (run #3, https://github.com/wotb76969-cmd/test/actions/runs/43742521921) — успешно
+- **tests** (ubuntu): 110 тестов Python 3.11, compileall, миграции Supabase + RLS на PostgreSQL 16, проверка отсутствия секретных ключей.
+- **windows** (windows-latest): все 110 тестов, включая GUI-тест Windows Client на настоящем Tk, preflight, PyInstaller, Inno Setup → `ChelsyAI_Host_Setup_0.9.3.exe`, `ChelsyAI_Client_Setup_0.9.3.exe`, `SHA256SUMS.txt`. **Не подписаны Authenticode** (секрет сертификата не задан).
+- **android**: `flutter analyze`, `flutter test`, release-сборка с R8 и обфускацией → `ChelsyAI_Android_0.9.3.apk`; `apksigner verify` (подпись v2, RSA 4096), разрешение только INTERNET, `allowBackup=false`, `usesCleartextTraffic=false`, не debuggable. **Подписан разовым ключом CI** (секрет keystore не задан) — для обновлений нужен постоянный ключ.
+- Найдено и исправлено в CI: утечка глобального флага конфигурации между тестами (проявлялась только там, где есть Tk), Android lint требует JDK 21.
 
 ## Ручной сценарий приёмки на устройствах
 1. Установить Host, войти, задать «Как дела, Челси?» и «Почему небо голубое?» (рус/англ).
