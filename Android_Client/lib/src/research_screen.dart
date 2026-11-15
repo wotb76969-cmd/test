@@ -22,8 +22,19 @@ class _ResearchScreenState extends State<ResearchScreen> {
   List<Map<String, dynamic>> _jobs = [];
   Map<String, dynamic>? _selected;
   List<Map<String, dynamic>> _items = [];
+  List<Map<String, dynamic>> _journal = [];
   Timer? _timer;
   String? _error;
+
+  static const _learnIcon = {
+    'learned': '📚',
+    'added': '➕',
+    'auto-job': '🔎',
+    'auto-done': '✅',
+    'skipped': '⏸',
+    'limit': '⛔',
+    'error': '⚠️',
+  };
 
   static const _status = {
     'queued': 'в очереди',
@@ -55,6 +66,7 @@ class _ResearchScreenState extends State<ResearchScreen> {
   Future<void> _refresh() async {
     try {
       final jobs = await widget.api.researchJobs();
+      final journal = await widget.api.learningJournal();
       List<Map<String, dynamic>> items = _items;
       if (_selected != null) {
         final data = await widget.api.researchJob(_selected!['id'] as String);
@@ -64,6 +76,7 @@ class _ResearchScreenState extends State<ResearchScreen> {
       if (mounted) {
         setState(() {
           _jobs = jobs;
+          _journal = journal;
           _items = items;
           _error = null;
         });
@@ -146,6 +159,22 @@ class _ResearchScreenState extends State<ResearchScreen> {
                   },
                 ),
               )),
+          if (_journal.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('Автоизучение — что Chelsy изучила сама', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            ..._journal.take(15).map((e) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Text(_learnIcon[e['event']] ?? '•', style: const TextStyle(fontSize: 18)),
+                  title: Text((e['title'] ?? '') as String, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(
+                      '${((e['created'] ?? '') as String).replaceFirst('T', ' ').padRight(16).substring(0, 16)} · ${e['detail'] ?? ''}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, color: ChelsyColors.muted)),
+                )),
+          ],
           if (_selected != null) ...[
             const SizedBox(height: 12),
             const Text('Найденные материалы', style: TextStyle(fontWeight: FontWeight.w600)),

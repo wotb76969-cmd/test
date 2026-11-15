@@ -1,5 +1,6 @@
 # Chelsy AI 0.9.3 — начни здесь
 
+0. **`Установка.md`** — пошаговая установка хоста, Windows-клиента и Android.
 1. `ChelsyAI_0.9_Windows/README_0.9.3_RU.md` — установка, запуск, Tailscale, Supabase, модели, исследования.
 2. `AUDIT_0.9.3_RU.md` — аудит 0.9.2 и план изменений.
 3. `SECURITY_0.9.3_RU.md` — модель безопасности Windows/Android/Host.

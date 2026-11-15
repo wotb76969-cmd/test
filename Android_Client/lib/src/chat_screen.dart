@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api.dart';
+import 'local_store.dart';
 import 'logic.dart';
 import 'message_view.dart';
 import 'pulse.dart';
@@ -24,6 +25,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _search = TextEditingController();
   final _scroll = ScrollController();
   HostApi? _api;
+  LocalStore? _store;
+  String _readOnlyLabel = 'Хост недоступен — показана история из облака (только чтение).';
   List<Conversation> _conversations = [];
   List<ChatMessage> _messages = [];
   String? _conversationId;
@@ -67,6 +70,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     final host = prefs.getString('chelsy_host') ?? '';
     _web = prefs.getBool('chelsy_web') ?? true;
+    final uid = Supabase.instance.client.auth.currentUser?.id;
+    if (uid != null) {
+      try {
+        _store = await LocalStore.forUser(uid);
+      } catch (_) {
+        _store = null; // storage unavailable: the app still works online
+      }
+    }
     try {
       _api = HostApi(host);
     } on FormatException catch (e) {
@@ -112,13 +123,21 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (api == null) return;
     try {
       final items = await api.conversations(query: _search.text.trim());
+      if (_search.text.trim().isEmpty) unawaited(_store?.saveConversations(items));
       if (!mounted) return;
       setState(() => _conversations = items);
       if (openLatest && items.isNotEmpty && _conversationId == null) await _open(items.first);
     } on HostException catch (e) {
       if (e.status == 401) return _signOut();
       _setOffline(e.message);
-      if (openLatest) await _loadCloudHistory();
+      final cached = await _store?.loadConversations() ?? [];
+      if (cached.isNotEmpty) {
+        if (!mounted) return;
+        setState(() => _conversations = cached);
+        if (openLatest && _conversationId == null) await _openCached(cached.first);
+      } else if (openLatest) {
+        await _loadCloudHistory();
+      }
     }
   }
 
@@ -136,6 +155,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _readOnlyCloud = true;
+        _readOnlyLabel = 'Хост недоступен — показана история из облака (только чтение).';
         _title = 'История из облака';
         _messages = rows.reversed.map((r) => ChatMessage.fromJson(Map<String, dynamic>.from(r))).toList();
       });
@@ -145,7 +165,22 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Offline: open the copy stored on this phone (read-only).
+  Future<void> _openCached(Conversation c) async {
+    final msgs = await _store?.loadMessages(c.id) ?? [];
+    if (!mounted) return;
+    setState(() {
+      _conversationId = c.id;
+      _title = c.title;
+      _messages = msgs;
+      _readOnlyCloud = true;
+      _readOnlyLabel = 'Хост недоступен — показана копия, сохранённая на телефоне (только чтение).';
+    });
+    _scrollDown(jump: true);
+  }
+
   Future<void> _open(Conversation c) async {
+    if (_offline) return _openCached(c);
     final api = _api;
     if (api == null || _generating) return;
     setState(() {
@@ -155,10 +190,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
     try {
       final msgs = await api.messages(c.id);
+      unawaited(_store?.saveMessages(c.id, msgs));
       if (!mounted) return;
       setState(() => _messages = msgs);
       _scrollDown(jump: true);
     } on HostException catch (e) {
+      if (e.status == 401) return _signOut();
+      if (e.offline) {
+        _setOffline(e.message);
+        return _openCached(c);
+      }
       _snack(e.message);
     }
   }
@@ -278,6 +319,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (_conversationId != null && !_offline) {
       try {
         final msgs = await api.messages(_conversationId!);
+        unawaited(_store?.saveMessages(_conversationId!, msgs));
         if (mounted) setState(() => _messages = msgs);
       } on HostException {
         // keep the streamed copy
@@ -408,6 +450,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _signOut() async {
     await _stream?.cancel();
+    await _store?.clear(); // no chat copies remain on the phone after sign-out
     await Supabase.instance.client.auth.signOut();
     widget.onSignedOut();
   }
@@ -595,9 +638,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (_offline || _readOnlyCloud)
         MaterialBanner(
           backgroundColor: const Color(0xFF2A1830),
-          content: Text(_readOnlyCloud
-              ? 'Хост недоступен — показана история из облака (только чтение).'
-              : 'Нет связи с Chelsy Host: $_statusText'),
+          content: Text(_readOnlyCloud ? _readOnlyLabel : 'Нет связи с Chelsy Host: $_statusText'),
           actions: [
             TextButton(
                 onPressed: () async {

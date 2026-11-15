@@ -21,6 +21,7 @@ from pathlib import Path
 from tkinter import (BooleanVar, Canvas, END, Frame, Label, Listbox, StringVar, Text, Tk, Toplevel, filedialog,
                      messagebox, ttk)
 
+import client_cache
 import secure_store
 from client_api import HostClient, HostError, Unauthorized, validate_host
 from supabase_auth import AuthError, allow_bundled_config, config as supabase_config, login as supabase_login, \
@@ -469,9 +470,38 @@ class ChelsyClientApp:
                 webbrowser.open(tag[4:])
 
     # ------------------------------------------------------------------ data
+    def _account(self):
+        return self.session.email or self.saved.get('email', '')
+
+    def _cached_conversations(self, query):
+        """Host first; on network failure fall back to the local offline copy."""
+        try:
+            items = self.client.conversations(query)
+            if not query:
+                client_cache.save_conversations(self._account(), items)
+            return items
+        except Unauthorized:
+            raise
+        except HostError:
+            items = client_cache.load_conversations(self._account(), query)
+            self.events.put(('offline', 'Хост недоступен — показана сохранённая на этом ПК копия'))
+            return items
+
+    def _cached_messages(self, conversation_id):
+        try:
+            items = self.client.messages(conversation_id)
+            client_cache.save_messages(self._account(), conversation_id, items)
+            return items
+        except Unauthorized:
+            raise
+        except HostError:
+            items = client_cache.load_messages(self._account(), conversation_id)
+            self.events.put(('offline', 'Хост недоступен — показана сохранённая копия диалога'))
+            return items
+
     def load_conversations(self):
         if self.client:
-            self._api(self.client.conversations, self.search_var.get().strip(), then='conversations')
+            self._api(self._cached_conversations, self.search_var.get().strip(), then='conversations')
 
     def _show_conversations(self, items):
         self.conversations = sorted(items, key=lambda c: (not c['favorite'], c['updated']), reverse=False)
@@ -491,7 +521,7 @@ class ChelsyClientApp:
         conv = self.conversations[sel[0]]
         self.conversation = conv['id']
         self.title_label.configure(text=conv['title'][:70])
-        self._api(self.client.messages, conv['id'], then='messages')
+        self._api(self._cached_messages, conv['id'], then='messages')
 
     def new_chat(self):
         if self.busy:
@@ -608,6 +638,11 @@ class ChelsyClientApp:
             self._api(self.client.sync, then='synced')
 
     def logout(self):
+        try:
+            if self._account():
+                client_cache.clear(self._account())   # shared PCs: no chat copies after sign-out
+        except (OSError, ValueError):
+            pass
         self.session.logout()
         self.client = None
         if self.main_frame:
@@ -726,6 +761,27 @@ class ChelsyClientApp:
             tree.heading(col, text=title)
             tree.column(col, width=width)
         tree.pack(fill='both', expand=True, padx=10, pady=10)
+        ttk.Label(win, text='Журнал автоизучения — что Chelsy изучила сама', style='Muted.TLabel').pack(anchor='w', padx=10)
+        journal = Text(win, height=9, wrap='word', bg=PANEL, fg=TEXT, borderwidth=0, font=('Segoe UI', 9))
+        journal.pack(fill='x', padx=10, pady=(2, 10))
+        labels = {'learned': '📚 изучено', 'added': '➕ добавлено', 'auto-job': '🔎 начато', 'auto-done': '✅ готово',
+                  'skipped': '⏸ на проверку', 'limit': '⛔ лимит', 'error': '⚠️ ошибка'}
+
+        def fill_journal(data):
+            journal.delete('1.0', END)
+            for e in data.get('journal', []):
+                journal.insert(END, f'{e["created"][:16].replace("T", " ")}  {labels.get(e["event"], e["event"])}  '
+                                    f'{e["title"][:90]}  {e["detail"][:80]}\n')
+            if not data.get('journal'):
+                journal.insert(END, 'Пока пусто. Chelsy начнёт изучать источники после ответов с поиском в интернете.')
+
+        def load_journal():
+            try:
+                data = self.client.learning()
+                self.events.put(('call', (lambda d=data: fill_journal(d), None)))
+            except (HostError, AuthError, OSError):
+                pass
+        self._background(load_journal)
 
         def fill(data):
             st = data['stats']
@@ -766,6 +822,9 @@ class ChelsyClientApp:
         elif kind == 'unauthorized':
             messagebox.showwarning('Chelsy AI', 'Сессия истекла. Войди снова.')
             self.logout()
+        elif kind == 'offline':
+            if self.main_frame:
+                self._set_status('offline', payload)
         elif kind == 'error':
             if self.main_frame:
                 self._set_status('offline', payload[:90])
@@ -800,7 +859,7 @@ class ChelsyClientApp:
             self.send_button.state(['!disabled'])
             self.stop_button.state(['disabled'])
             if self.conversation:
-                self._api(self.client.messages, self.conversation, then='messages')
+                self._api(self._cached_messages, self.conversation, then='messages')
             self.load_conversations()
 
     def _stream_event(self, event):

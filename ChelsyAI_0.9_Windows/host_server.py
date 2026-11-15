@@ -15,6 +15,7 @@ import base64
 import json
 import os
 import re
+import sys
 import threading
 import time
 import uuid
@@ -345,6 +346,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {'documents': kb['db'].list_documents(username, q.get('q', '')[:100], scope),
                                     'stats': kb['db'].stats(username), 'conflicts': kb['db'].conflicts(username),
                                     'sources': kb['db'].sources()})
+        if path == '/api/v2/learning':
+            from knowledge import autolearn
+            return self.reply(200, {'journal': kb['db'].journal(username, int(q.get('limit', '50') or 50)),
+                                    'settings': autolearn.settings(), 'owner': is_owner(username),
+                                    'today': kb['db'].events_today(username)})
         if path == '/api/v2/knowledge/search':
             return self.reply(200, {'results': kb['retriever'].retrieve(q.get('q', '')[:500], username, top=6)})
         return self.reply(404, {'error': 'Not found'})
@@ -424,6 +430,11 @@ class Handler(BaseHTTPRequestHandler):
                     kb['scheduler'].reject(int(m.group(1)), username)
                     return self.reply(200, {'rejected': True})
                 return self.reply(400, {'error': 'Unknown action'})
+            if path == '/api/v2/learning/settings':
+                if not is_owner(username):
+                    return self.reply(403, {'error': 'Owner only'})
+                from knowledge import autolearn
+                return self.reply(200, {'settings': autolearn.save_settings(body)})
             if path == '/api/v2/knowledge/sources':
                 if not is_owner(username):
                     return self.reply(403, {'error': 'Owner only'})
@@ -557,10 +568,31 @@ def serve():
     if os.environ.get('CHELSY_AUTO_CRAWL') == '1':
         threading.Thread(target=auto_research_loop, daemon=True).start()
     print(f'Chelsy AI Host {VERSION} runs on http://127.0.0.1:%d' % PORT, flush=True)
-    print('To allow your devices, install Tailscale and run: tailscale serve --bg %d' % PORT, flush=True)
+    try:
+        import host_doctor
+        ts = host_doctor.tailscale_info()
+        if ts['serving'] and ts['url']:
+            print(f'Адрес для Windows Client и Android: {ts["url"]}', flush=True)
+        else:
+            print('Доступ с устройств ещё не включён: ChelsyHost.exe --setup-tailscale '
+                  f'(или tailscale serve --bg {PORT})', flush=True)
+    except Exception:
+        pass
     print('Never forward this port on your router or use Tailscale Funnel.', flush=True)
     ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()
 
 
-if __name__ == '__main__':
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    if '--doctor' in args or '--setup-tailscale' in args:
+        import host_doctor
+        code = host_doctor.setup_tailscale() if '--setup-tailscale' in args else 0
+        code = host_doctor.print_report() or code
+        host_doctor.wait_if_frozen()
+        return code
     serve()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

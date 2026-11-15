@@ -478,9 +478,20 @@ class ChelsyEngine:
         if not searched and 'false-search-claim' in assessment.issues:
             answer = rq.remove_false_search_claims(answer)
         final = prefix + answer.strip() + sources_md
+        self._autolearn(username, question, route, live, local, searched, web_enabled)
         yield {'type': 'replace', 'text': final}
         yield finish(final, sources=sources_meta, searched=searched, model_name=model_name, route=route,
                      extra_meta={'quality': assessment.issues, 'regenerated': attempts})
+
+    def _autolearn(self, username, question, route, live, local, searched, web_enabled):
+        """Hand the finished turn to AutoLearner (background work only; never blocks or breaks a reply)."""
+        try:
+            learner = self.knowledge.get('autolearn') if isinstance(self.knowledge, dict) else None
+            if learner is not None:
+                learner.after_answer(username, question, route, live_sources=live, local_results=local,
+                                     searched=searched, web_enabled=web_enabled)
+        except Exception as exc:          # learning problems must not affect the conversation
+            print('[AutoLearn]', type(exc).__name__, flush=True)
 
     def _correction(self, assessment, language):
         issues = set(assessment.issues)

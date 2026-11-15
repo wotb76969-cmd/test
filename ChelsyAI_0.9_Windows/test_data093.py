@@ -54,9 +54,9 @@ class MigrationTests(TempData):
     def test_upgrade_092_database_preserves_everything_and_backs_up(self):
         make_092_database(core.DB_PATH)
         applied = migrations.migrate(core.DB_PATH)
-        self.assertEqual(applied, [1, 2, 3])
+        self.assertEqual(applied, list(range(1, migrations.SCHEMA_VERSION + 1)))
         backups = sorted((core.DATA / 'backups').glob('*-before-v*.db'))
-        self.assertEqual(len(backups), 3)
+        self.assertEqual(len(backups), migrations.SCHEMA_VERSION)
         with closing(sqlite3.connect(backups[0])) as old:
             self.assertEqual(old.execute('SELECT COUNT(*) FROM messages').fetchone()[0], 3)
         self.assertEqual([m['content'] for m in core.history('owner')], ['Привет из 0.9.2', 'Ответ из 0.9.2'])
@@ -80,7 +80,7 @@ class MigrationTests(TempData):
         message = migrations.rollback(core.DB_PATH, 1)
         self.assertIn('Restored', message)
         self.assertEqual(migrations.inspect(core.DB_PATH)['version'], 1)
-        self.assertTrue(list((core.DATA / 'backups').glob('*pre-rollback-v3.db')))
+        self.assertTrue(list((core.DATA / 'backups').glob(f'*pre-rollback-v{migrations.SCHEMA_VERSION}.db')))
         core._MIGRATED.discard(str(core.DB_PATH))
 
     def test_down_migrations(self):

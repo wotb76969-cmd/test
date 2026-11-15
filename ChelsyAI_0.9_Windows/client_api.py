@@ -144,5 +144,12 @@ class HostClient:
     def knowledge(self, query=''):
         return self.call('GET', '/api/v2/knowledge' + ('?' + urlencode({'q': query}) if query else ''))
 
+    def learning(self, limit=50):
+        """Autonomous learning journal + host settings."""
+        return self.call('GET', f'/api/v2/learning?limit={int(limit)}')
+
+    def save_learning_settings(self, **values):
+        return self.call('POST', '/api/v2/learning/settings', values)
+
     def sync(self):
         return self.call('GET', '/api/v2/sync')

@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'dart:io';
+
+import 'package:chelsy_ai_client/src/local_store.dart';
 import 'package:chelsy_ai_client/src/logic.dart';
 import 'package:chelsy_ai_client/src/message_view.dart';
 import 'package:chelsy_ai_client/src/pulse.dart';
@@ -36,6 +39,25 @@ void main() {
     final events = await decodeNdjson(chunks).toList();
     expect(events.map((e) => e['type']), ['start', 'delta', 'done']);
     expect(events.last['text'], 'Привет');
+  });
+
+  test('local store keeps an offline copy per account and clears it', () async {
+    final dir = await Directory.systemTemp.createTemp('chelsy_store');
+    final store = LocalStore(Directory('${dir.path}/u1'));
+    const id = '11111111-1111-4111-8111-111111111111';
+    await store.saveConversations([Conversation(id: id, title: 'Небо', updated: '2026', favorite: true)]);
+    await store.saveMessages(id, [
+      ChatMessage(id: 1, role: 'user', content: 'Почему небо голубое?'),
+      ChatMessage(role: 'assistant', content: 'Рассеяние света.'),
+      ChatMessage(role: 'assistant', content: '…', pending: true),
+    ]);
+    expect((await store.loadConversations()).single.favorite, isTrue);
+    final msgs = await store.loadMessages(id);
+    expect(msgs.map((m) => m.content), ['Почему небо голубое?', 'Рассеяние света.']);
+    expect(await store.loadMessages('../../etc/passwd'), isEmpty);
+    await store.clear();
+    expect(await store.loadConversations(), isEmpty);
+    await dir.delete(recursive: true);
   });
 
   test('only https links are opened', () {

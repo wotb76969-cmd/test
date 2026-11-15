@@ -1,4 +1,4 @@
-; Chelsy AI 0.9.3 — standalone Windows Client. Does NOT need Ollama.
+﻿; Chelsy AI 0.9.3 — standalone Windows Client. Does NOT need Ollama.
 ; Connects to Chelsy Host over HTTPS (Tailscale) and signs in with the Chelsy Group account.
 #define ClientName "Chelsy AI Client"
 #define ClientVersion "0.9.3"
@@ -31,6 +31,7 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 [Files]
 Source: "dist\ChelsyClient\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyConfig\*"; DestDir: "{app}\Config"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\Установка.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\Chelsy AI Client"; Filename: "{app}\ChelsyClient.exe"
 Name: "{autoprograms}\Chelsy AI Client — настройка Supabase"; Filename: "{app}\Config\ChelsyConfig.exe"

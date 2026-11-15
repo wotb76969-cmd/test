@@ -99,6 +99,12 @@ class HostApi {
 
   Future<void> stop(String requestId) => _call('POST', '/api/v2/chat/stop', {'request_id': requestId});
 
+  /// Autonomous learning journal (what Chelsy studied on her own).
+  Future<List<Map<String, dynamic>>> learningJournal() async =>
+      ((await _call('GET', '/api/v2/learning?limit=30'))['journal'] as List? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .toList();
+
   Future<Map<String, dynamic>> sync() => _call('GET', '/api/v2/sync');
 
   Future<List<Map<String, dynamic>>> researchJobs() async =>

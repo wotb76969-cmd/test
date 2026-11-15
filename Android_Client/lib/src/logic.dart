@@ -43,6 +43,8 @@ class Conversation {
   final String updated;
   final bool favorite;
 
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'updated': updated, 'favorite': favorite};
+
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
         id: json['id'] as String,
         title: (json['title'] as String?)?.trim().isNotEmpty == true ? json['title'] as String : 'Без названия',
@@ -60,6 +62,8 @@ class ChatMessage {
   bool pending;
 
   bool get fromUser => role == 'user';
+
+  Map<String, dynamic> toJson() => {'id': id, 'role': role, 'content': content, 'rating': rating};
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
         id: json['id'] is int ? json['id'] as int : null,

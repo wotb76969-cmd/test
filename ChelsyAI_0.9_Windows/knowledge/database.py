@@ -309,3 +309,22 @@ class KnowledgeDatabase:
                              (1 if enabled else 0, schedule_id, username))
             if last_run is not None:
                 conn.execute('UPDATE research_schedule SET last_run=? WHERE id=?', (last_run, schedule_id))
+
+    # ------------------------------------------------------------ learning journal
+    def log_event(self, username, event, title='', url='', detail=''):
+        with core.DB_LOCK, core.db() as conn:
+            conn.execute('INSERT INTO learning_log(username,created,event,title,url,detail) VALUES(?,?,?,?,?,?)',
+                         (username, now(), event[:40], (title or '')[:250], (url or '')[:900], (detail or '')[:400]))
+
+    def journal(self, username, limit=50):
+        keys = ('id', 'created', 'event', 'title', 'url', 'detail')
+        with core.DB_LOCK, core.db() as conn:
+            rows = conn.execute('SELECT id,created,event,title,url,detail FROM learning_log WHERE username IN (?, ?) '
+                                'ORDER BY id DESC LIMIT ?', (username, '*', int(limit))).fetchall()
+        return [dict(zip(keys, r)) for r in rows]
+
+    def events_today(self, username, events=('auto-job',)):
+        q = ','.join('?' * len(events))
+        with core.DB_LOCK, core.db() as conn:
+            return conn.execute(f"SELECT COUNT(*) FROM learning_log WHERE username=? AND event IN ({q}) "
+                                f"AND created >= date('now')", (username, *events)).fetchone()[0]

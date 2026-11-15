@@ -224,6 +224,20 @@ class HostV2Tests(unittest.TestCase):
         self.assertIn('messages', data)
         self.assertEqual(data['messages'][-2]['content'], 'Привет из старого клиента')
 
+    def test_learning_journal_and_settings(self):
+        from knowledge import services
+        services()['db'].log_event('sb:' + ALICE, 'learned', 'Документация FastAPI', 'https://fastapi.tiangolo.com/', 'личная база')
+        alice, bob, owner = self.client(), self.client('token-bob-0123456789xx'), self.client('token-owner-0123456789')
+        self.assertEqual(alice.learning()['journal'][0]['title'], 'Документация FastAPI')
+        self.assertEqual(bob.learning()['journal'], [])                      # journals are per user
+        with self.assertRaises(HostError) as ctx:
+            alice.save_learning_settings(enabled=False)
+        self.assertEqual(ctx.exception.status, 403)
+        saved = owner.save_learning_settings(curiosity=False, daily_jobs=5)['settings']
+        self.assertFalse(saved['curiosity'])
+        self.assertEqual(alice.learning()['settings']['daily_jobs'], 5)
+        owner.save_learning_settings(curiosity=True, daily_jobs=20)
+
     def test_status_reports_capabilities(self):
         with patch('ollama_client.available', return_value=False):
             status = self.client('token-owner-0123456789').status()

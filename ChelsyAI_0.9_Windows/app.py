@@ -491,6 +491,35 @@ def knowledge_preview(query, request: gr.Request):
                        for i, r in enumerate(results, 1))
 
 
+LEARN_LABELS = {'learned': '📚 изучено', 'added': '➕ добавлено вручную', 'auto-job': '🔎 начато изучение',
+                'auto-done': '✅ готово', 'skipped': '⏸ оставлено на проверку', 'limit': '⛔ дневной лимит',
+                'error': '⚠️ ошибка'}
+
+
+def learning_view(request: gr.Request):
+    from knowledge import autolearn
+    username = user(request)
+    cfg = autolearn.settings()
+    items = _kb()['db'].journal(username, 40)
+    lines = [f'Сегодня автоматических исследований: **{_kb()["db"].events_today(username)}** из {cfg["daily_jobs"]}.', '']
+    for e in items:
+        link = f' — [источник]({e["url"]})' if e['url'].startswith('https://') else ''
+        lines.append(f'- `{e["created"][:16].replace("T", " ")}` {LEARN_LABELS.get(e["event"], e["event"])}: '
+                     f'{html.escape(e["title"][:100])}{link} <small>{html.escape(e["detail"][:120])}</small>')
+    if not items:
+        lines.append('_Пока пусто. Chelsy начнёт изучать источники после ответов с поиском в интернете._')
+    return ('\n'.join(lines), cfg['enabled'], cfg['from_search'], cfg['curiosity'], cfg['daily_jobs'], cfg['min_trust'])
+
+
+def learning_save(enabled, from_search, curiosity, daily, min_trust, request: gr.Request):
+    from knowledge import autolearn
+    if not owner(request):
+        raise gr.Error('Настройки автоизучения меняет владелец.')
+    autolearn.save_settings({'enabled': bool(enabled), 'from_search': bool(from_search), 'curiosity': bool(curiosity),
+                             'daily_jobs': int(daily), 'min_trust': float(min_trust)})
+    return '✅ Настройки автоизучения сохранены.'
+
+
 def knowledge_archive(doc_id, request: gr.Request):
     username = user(request)
     try:
@@ -865,6 +894,21 @@ def build():
                     kb_doc = gr.Number(label='ID документа', precision=0, scale=2)
                     kb_archive_btn = gr.Button('🗄 Архивировать', scale=1)
                 kb_archive_msg = gr.Markdown()
+                with gr.Accordion('🧠 Автоизучение интернета — журнал и настройки', open=True):
+                    gr.Markdown('Chelsy сама сохраняет **надёжные** источники своих поисков и изучает темы, которых '
+                                'нет в базе знаний. Сомнительные страницы и страницы с инструкциями для ИИ остаются '
+                                'на проверку в «Исследованиях». Это пополнение базы знаний, а не переобучение модели.')
+                    with gr.Row():
+                        learn_enabled = gr.Checkbox(label='Автоизучение включено', value=True)
+                        learn_search = gr.Checkbox(label='Сохранять источники своих поисков', value=True)
+                        learn_curiosity = gr.Checkbox(label='Изучать незнакомые темы', value=True)
+                    with gr.Row():
+                        learn_daily = gr.Slider(0, 100, value=20, step=1, label='Автоисследований в день на пользователя')
+                        learn_trust = gr.Slider(0.3, 1.0, value=0.5, step=0.05, label='Минимальная надёжность источника')
+                        learn_save = gr.Button('Сохранить (владелец)', scale=0, min_width=170)
+                    learn_msg = gr.Markdown()
+                    learn_refresh = gr.Button('↻ Обновить журнал', size='sm')
+                    learn_journal = gr.Markdown()
             with gr.Column(visible=False, elem_classes='chelsy-page') as settings_page:
                 gr.HTML('<h2>⚙️ Настройки</h2>')
                 with gr.Row():
@@ -949,6 +993,11 @@ def build():
         kb_refresh.click(knowledge_view, inputs=[kb_query, kb_scope], outputs=[kb_summary, kb_table, kb_conflicts], api_name=False)
         kb_search_btn.click(knowledge_preview, inputs=[kb_search], outputs=[kb_results], api_name=False)
         kb_archive_btn.click(knowledge_archive, inputs=[kb_doc], outputs=[kb_archive_msg], api_name=False)
+        learn_outputs = [learn_journal, learn_enabled, learn_search, learn_curiosity, learn_daily, learn_trust]
+        learn_refresh.click(learning_view, outputs=learn_outputs, api_name=False)
+        learn_save.click(learning_save, inputs=[learn_enabled, learn_search, learn_curiosity, learn_daily, learn_trust],
+                         outputs=[learn_msg], api_name=False)
+        demo.load(learning_view, outputs=learn_outputs, api_name=False)
 
         save_settings.click(settings_save, inputs=[model, temperature, top_p, num_ctx, num_predict, repeat_penalty, use_memory,
                                                    use_knowledge, web_default, consent],

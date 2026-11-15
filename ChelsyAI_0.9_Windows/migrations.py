@@ -27,7 +27,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 MAX_BACKUPS = 30
 
 
@@ -248,10 +248,32 @@ def _m3_down(conn):
         conn.execute(f'DROP TABLE IF EXISTS {name}')
 
 
+# --------------------------------------------------------------------------- v4
+def _m4_learning_log(conn):
+    """Journal of autonomous learning (what Chelsy studied, why, from where)."""
+    _script(conn, '''
+    CREATE TABLE IF NOT EXISTS learning_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        created TEXT NOT NULL,
+        event TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT '',
+        url TEXT NOT NULL DEFAULT '',
+        detail TEXT NOT NULL DEFAULT ''
+    );
+    CREATE INDEX IF NOT EXISTS learning_log_user ON learning_log(username, created)
+    ''')
+
+
+def _m4_down(conn):
+    conn.execute('DROP TABLE IF EXISTS learning_log')
+
+
 MIGRATIONS = {
     1: ('Baseline schema of Chelsy 0.9.2', _m1_baseline, None),
     2: ('Conversations, stable message ids, feedback, user settings', _m2_conversations, _m2_down),
     3: ('Knowledge Engine and research storage', _m3_knowledge, _m3_down),
+    4: ('Autonomous learning journal', _m4_learning_log, _m4_down),
 }
 
 

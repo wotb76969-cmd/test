@@ -71,7 +71,7 @@ class ResearchScheduler:
         return 'topic', cleaned.strip(' ?!.') or topic
 
     def submit(self, username, topic, *, target_scope=None, max_pages=8, auto_accept=False, is_owner=False,
-               allowlist_only=False, news=False):
+               allowlist_only=False, news=False, urls=None, min_trust=None, autolearn=False):
         topic = re.sub(r'\s+', ' ', topic or '').strip()[:300]
         if len(topic) < 3:
             raise ResearchError('Опиши тему исследования подробнее.')
@@ -83,9 +83,13 @@ class ResearchScheduler:
         if target_scope not in ('shared', username):
             raise ResearchError('Недопустимая база знаний.')
         kind, subject = self.classify(topic)
+        if urls:
+            kind = 'urls'
         params = {'subject': subject, 'max_pages': max(1, min(int(max_pages), self.max_pages_limit)),
                   'target_scope': target_scope, 'auto_accept': bool(auto_accept),
-                  'allowlist_only': bool(allowlist_only), 'news': bool(news)}
+                  'allowlist_only': bool(allowlist_only), 'news': bool(news),
+                  'urls': [u for u in (urls or []) if isinstance(u, str)][:10],
+                  'min_trust': min_trust, 'autolearn': bool(autolearn)}
         job_id = self.db.create_job(username, topic, kind, params)
         self._wake.set()
         return job_id
@@ -120,9 +124,15 @@ class ResearchScheduler:
             raise ResearchError('Недопустимая база знаний.')
         if not item['body']:
             raise ResearchError('У этого результата нет загруженного текста.')
+        flags = list(item['flags']) + (['auto-learned'] if job['params'].get('autolearn') else [])
         doc_id, action = self.db.upsert_document(
             scope, item['url'], item['title'] or item['url'], item['body'], published=item['published'],
-            lang=item['lang'], topic=item['topic'], trust=item['trust'], flags=item['flags'], indexer=self.indexer)
+            lang=item['lang'], topic=item['topic'], trust=item['trust'], flags=flags, indexer=self.indexer)
+        if action in ('created', 'updated'):
+            self.db.log_event(username, 'learned' if job['params'].get('autolearn') else 'added',
+                              item['title'] or item['url'], item['url'],
+                              ('новая версия; ' if action == 'updated' else '') +
+                              ('общая база' if scope == 'shared' else 'личная база') + f'; надёжность {item["trust"]:.2f}')
         self.db.set_item_status(item_id, 'accepted', doc_id=doc_id,
                                 note={'created': 'Добавлено', 'updated': 'Обновлена новая версия',
                                       'unchanged': 'Уже в базе', 'duplicate': 'Дубликат уже сохранённого материала'}[action])
@@ -171,7 +181,14 @@ class ResearchScheduler:
                                    excerpt=(extracted.description or extracted.text[:400])[:500], body=extracted.text,
                                    content_hash=digest, trust=trust, flags=extracted.flags, status='fetched',
                                    note='; '.join(reasons)[:300], lang=extracted.lang, topic=extracted.topic)
-        if job['params'].get('auto_accept'):
+        min_trust = job['params'].get('min_trust')
+        if job['params'].get('auto_accept') and (
+                (min_trust is not None and trust < min_trust) or 'prompt-injection' in extracted.flags):
+            # Autonomous learning keeps only reliable pages; the rest wait for the user's decision.
+            self.db.set_item_status(item_id, 'fetched', note=('Низкая надёжность — нужна проверка; ' + '; '.join(reasons))[:300])
+            if job['params'].get('autolearn'):
+                self.db.log_event(job['username'], 'skipped', extracted.title, url, f'надёжность {trust:.2f} — оставлено на проверку')
+        elif job['params'].get('auto_accept'):
             try:
                 self.accept(item_id, job['username'], job['params']['target_scope'],
                             is_owner=job['params']['target_scope'] == 'shared')
@@ -191,6 +208,9 @@ class ResearchScheduler:
                 if not results:
                     raise ResearchError(note or 'Поиск ничего не нашёл.')
                 queue = [r['url'] for r in results]
+                crawl_prefix = None
+            elif job['kind'] == 'urls':
+                queue = list(params.get('urls') or [])
                 crawl_prefix = None
             elif job['kind'] == 'docs':
                 self.db.update_job(job_id, message='Ищу официальную документацию')
@@ -229,7 +249,12 @@ class ResearchScheduler:
                             queue.append(link)
             message = f'Готово: найдено материалов — {done}. Проверь их и добавь нужные в базу знаний.'
             if params.get('auto_accept'):
-                message = f'Готово: обработано материалов — {done}, они добавлены в базу знаний.'
+                items = self.db.items(job_id)
+                added = sum(1 for i in items if i['status'] == 'accepted')
+                review = sum(1 for i in items if i['status'] == 'fetched')
+                message = f'Готово: в базу знаний добавлено — {added}' + (f', ждут проверки — {review}' if review else '') + '.'
+            if params.get('autolearn'):
+                self.db.log_event(job['username'], 'auto-done', job['topic'][:200], '', message)
             self.db.update_job(job_id, status='done', progress=1.0, message=message)
         except ResearchError as exc:
             self.db.update_job(job_id, status='error', message=str(exc)[:300])

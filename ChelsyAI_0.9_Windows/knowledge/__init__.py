@@ -11,10 +11,11 @@ from .retriever import KnowledgeRetriever
 from .scheduler import ResearchError, ResearchScheduler
 from .search_manager import SearchManager
 from .verifier import SourceVerifier
+from .autolearn import AutoLearner
 
 __all__ = ['KnowledgeDatabase', 'ContentExtractor', 'FetchError', 'SourceFetcher', 'KnowledgeIndexer',
            'KnowledgeRetriever', 'ResearchError', 'ResearchScheduler', 'SearchManager', 'SourceVerifier',
-           'services']
+           'services', 'AutoLearner']
 
 _services = None
 
@@ -25,10 +26,13 @@ def services():
     if _services is None:
         database = KnowledgeDatabase()
         indexer = KnowledgeIndexer()
+        search = SearchManager()
+        scheduler = ResearchScheduler(database=database, indexer=indexer, search=search)
         _services = {
             'db': database,
             'indexer': indexer,
             'retriever': KnowledgeRetriever(),
-            'scheduler': ResearchScheduler(database=database, indexer=indexer),
+            'scheduler': scheduler,
+            'autolearn': AutoLearner(database, scheduler, search),
         }
     return _services

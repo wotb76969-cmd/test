@@ -1,4 +1,4 @@
-; Chelsy AI 0.9.3 — Host installer for the owner's laptop:
+﻿; Chelsy AI 0.9.3 — Host installer for the owner's laptop:
 ; Desktop UI + Chelsy Host API + Windows Client + Supabase setup + data tools.
 ; Per-user install (no administrator rights). User data lives in %LOCALAPPDATA%\ChelsyAI\data
 ; and is NOT removed on uninstall or upgrade.
@@ -40,13 +40,19 @@ Source: "dist\ChelsyDB\*"; DestDir: "{app}\Database"; Flags: ignoreversion recur
 Source: "dist\ChelsyUpload\*"; DestDir: "{app}\CloudUpload"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "dist\ChelsyMigrate\*"; DestDir: "{app}\Migration"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "README_0.9.3_RU.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\Установка.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\Chelsy AI"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autoprograms}\Chelsy AI Host (сервер для устройств)"; Filename: "{app}\Host\ChelsyHost.exe"
+Name: "{autoprograms}\Chelsy AI Host — проверка готовности"; Filename: "{app}\Host\ChelsyHost.exe"; Parameters: "--doctor"
+Name: "{autoprograms}\Chelsy AI Host — включить доступ с устройств (Tailscale)"; Filename: "{app}\Host\ChelsyHost.exe"; Parameters: "--setup-tailscale"
+Name: "{userstartup}\Chelsy AI Host"; Filename: "{app}\Host\ChelsyHost.exe"; Flags: runminimized; Tasks: hostautostart
 Name: "{autoprograms}\Chelsy AI Client"; Filename: "{app}\Client\ChelsyClient.exe"
 Name: "{autoprograms}\Chelsy AI — настройка Supabase"; Filename: "{app}\Config\ChelsyConfig.exe"
 Name: "{autodesktop}\Chelsy AI"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Дополнительные задачи:"
+Name: "hostautostart"; Description: "Запускать Chelsy AI Host при входе в Windows (нейросеть доступна телефону и другим ПК)"; GroupDescription: "Доступ с устройств:"
 [Run]
+Filename: "{app}\Host\ChelsyHost.exe"; Parameters: "--doctor"; Description: "Проверить готовность хоста для всех устройств"; Flags: postinstall skipifsilent unchecked
 Filename: "{app}\{#MyAppExeName}"; Description: "Запустить Chelsy AI"; Flags: nowait postinstall skipifsilent
