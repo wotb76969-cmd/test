@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chelsy AI splash: brand dark background with the logo. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><color android:color="#0B0C20" /></item>
+    <item>
+        <bitmap android:gravity="center" android:src="@mipmap/ic_launcher" />
+    </item>
+</layer-list>

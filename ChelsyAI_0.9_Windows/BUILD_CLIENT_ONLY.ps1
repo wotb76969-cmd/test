@@ -1,5 +1,6 @@
 $ErrorActionPreference='Stop'
 Set-Location $PSScriptRoot
+# Builds only installer\ChelsyAI_Client_Setup_0.9.3.exe (no Ollama, no Gradio inside).
 try {
     & py -3.11 --version
     if ($LASTEXITCODE -ne 0) { throw 'Python 3.11 not found' }
@@ -9,9 +10,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'pip failed' }
     & $py -m unittest discover -q
     if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
-    & $py -m PyInstaller --noconfirm --clean --onedir --windowed --name ChelsyClient --icon assets\chelsy.ico client.py
+    & $py -m PyInstaller --noconfirm --clean --onedir --version-file version_info.txt --windowed --name ChelsyClient --icon assets\chelsy.ico --add-data 'assets;assets' --add-data 'site_supabase_public.json;.' --exclude-module gradio client.py
     if ($LASTEXITCODE -ne 0) { throw 'Client build failed' }
-    & $py -m PyInstaller --noconfirm --clean --onedir --windowed --name ChelsyConfig --icon assets\chelsy.ico --add-data 'site_supabase_public.json;.' configure_supabase.py
+    & $py -m PyInstaller --noconfirm --clean --onedir --version-file version_info.txt --windowed --name ChelsyConfig --icon assets\chelsy.ico --add-data 'site_supabase_public.json;.' configure_supabase.py
     if ($LASTEXITCODE -ne 0) { throw 'Config build failed' }
     $candidates=@()
     if ($env:CHELSY_ISCC_PATH) { $candidates += $env:CHELSY_ISCC_PATH }
@@ -21,5 +22,5 @@ try {
     if (-not $compiler) { throw 'Inno Setup 6/7 missing. Install it or set CHELSY_ISCC_PATH' }
     & $compiler (Join-Path $PSScriptRoot 'CLIENT_ONLY.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
-    Write-Host 'READY: installer\ChelsyAI_Client_Setup_0.9.exe' -ForegroundColor Green
+    Write-Host 'READY: installer\ChelsyAI_Client_Setup_0.9.3.exe' -ForegroundColor Green
 } catch { Write-Host $_.Exception.Message -ForegroundColor Red; exit 1 }

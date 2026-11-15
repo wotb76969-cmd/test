@@ -12,9 +12,16 @@ async function load() {
     const supabase = createClient(config.supabaseUrl, config.supabasePublishableKey);
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) { status.textContent='Войдите в аккаунт Chelsy Group.'; return; }
-    const {data, error} = await supabase.from('chelsy_ai_messages')
-      .select('role,content,created_at').eq('user_id',user.id)
+    // 0.9.3: hide messages deleted in Chelsy AI (migration 003). Falls back to the
+    // 0.9.2 query when the deleted_at column does not exist yet.
+    let {data, error} = await supabase.from('chelsy_ai_messages')
+      .select('role,content,created_at').eq('user_id',user.id).is('deleted_at', null)
       .order('created_at',{ascending:true}).limit(500);
+    if (error) {
+      ({data, error} = await supabase.from('chelsy_ai_messages')
+        .select('role,content,created_at').eq('user_id',user.id)
+        .order('created_at',{ascending:true}).limit(500));
+    }
     if (error) throw error;
     output.replaceChildren();
     for (const message of (data || [])) {

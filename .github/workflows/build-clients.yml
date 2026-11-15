@@ -1,10 +1,66 @@
-name: Build Chelsy AI 0.9 installers
+name: Chelsy AI 0.9.3 — tests and installers
+# Reproducible build of:
+#   ChelsyAI_Host_Setup_0.9.3.exe, ChelsyAI_Client_Setup_0.9.3.exe (windows-latest)
+#   ChelsyAI_Android_0.9.3.apk (ubuntu-latest, Flutter 3.50.0)
+# Builds run only after all tests pass. Optional repository secrets:
+#   WINDOWS_SIGN_PFX_BASE64, WINDOWS_SIGN_PASSWORD           -> Authenticode signing of EXE/installers
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD                   -> stable release signing of the APK
 on:
   workflow_dispatch:
+  push:
+    branches: ['main', 'claude/**']
+    tags: ['v*']
+  pull_request:
 permissions:
   contents: read
+concurrency:
+  group: chelsy-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  tests:
+    name: Python tests + Supabase migrations on real PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        working-directory: ChelsyAI_0.9_Windows
+        run: python -m pip install -r requirements.txt
+      - name: Unit + integration tests (mocked Ollama/Supabase/web)
+        working-directory: ChelsyAI_0.9_Windows
+        run: python -m unittest discover -v
+      - name: Byte-compile everything
+        working-directory: ChelsyAI_0.9_Windows
+        run: python -m compileall -q .
+      - name: Supabase migrations 001-003, RLS isolation, rollback
+        working-directory: ChelsyAI_0.9_Windows/supabase/tests
+        env:
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: ./run_local_pg_test.sh
+      - name: No secret keys in client-side code
+        run: |
+          if grep -rIn --exclude-dir=.git -E "sb_secret_[A-Za-z0-9]|service_role\"?\s*[:=]\s*\"ey" ChelsyAI_0.9_Windows Android_Client ChelsyGroup_Web \
+               | grep -v "startswith('sb_secret_')\|startsWith('sb_secret_')\|sb_secret_not_allowed\|sb_secret_|service_role'\|NOT service_role"; then
+            echo "Possible secret key in client code"; exit 1; fi
+
   windows:
+    name: Windows installers
+    needs: tests
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,18 +70,40 @@ jobs:
       - name: Install Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
-      - name: Build desktop and client EXE installers
+      - name: Prepare optional code-signing certificate
+        shell: pwsh
+        env:
+          PFX: ${{ secrets.WINDOWS_SIGN_PFX_BASE64 }}
+        run: |
+          if ($env:PFX) {
+            $path = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+            [IO.File]::WriteAllBytes($path, [Convert]::FromBase64String($env:PFX))
+            "CHELSY_SIGN_PFX=$path" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else { Write-Host '::warning::WINDOWS_SIGN_PFX_BASE64 not set: installers will be unsigned (SmartScreen warning).' }
+      - name: Build Host and Client installers (runs all tests first)
         shell: pwsh
         working-directory: ChelsyAI_0.9_Windows
+        env:
+          CHELSY_PYTHON: python
+          CHELSY_SIGN_PASSWORD: ${{ secrets.WINDOWS_SIGN_PASSWORD }}
         run: ./BUILD_INSTALLER.ps1
-      - name: Upload Windows EXE installers
-        uses: actions/upload-artifact@v4
+      - name: Remove signing material
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Force -ErrorAction SilentlyContinue (Join-Path $env:RUNNER_TEMP 'sign.pfx')
+      - uses: actions/upload-artifact@v4
         with:
-          name: ChelsyAI-0.9-Windows-EXE
-          path: ChelsyAI_0.9_Windows/installer/*.exe
+          name: ChelsyAI-0.9.3-Windows
+          path: |
+            ChelsyAI_0.9_Windows/installer/ChelsyAI_Host_Setup_0.9.3.exe
+            ChelsyAI_0.9_Windows/installer/ChelsyAI_Client_Setup_0.9.3.exe
+            ChelsyAI_0.9_Windows/installer/SHA256SUMS.txt
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
   android:
+    name: Android APK
+    needs: tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,32 +114,67 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.50.0'
           cache: true
-      - name: Prepare Android sources
+      - name: Analyze and test
         working-directory: Android_Client
-        shell: bash
         run: |
-          flutter create --platforms=android --project-name chelsy_ai_client --org ai.chelsy .
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('android/app/src/main/AndroidManifest.xml')
-          s=p.read_text()
-          if 'android.permission.INTERNET' not in s:
-              s=s.replace('<application','<uses-permission android:name="android.permission.INTERNET" />\n    <application',1)
-          p.write_text(s)
-          PY
           flutter pub get
-      - name: Build beta Android APK
+          flutter analyze
+          flutter test
+      - name: Release keystore
         working-directory: Android_Client
-        shell: bash
-        run: >-
-          flutter build apk --release
-          --dart-define=SUPABASE_URL=https://mbhqpgmhkrypxevaboih.supabase.co
-          --dart-define=SUPABASE_KEY=sb_publishable_DGCT89JC46vkWcgsV0Wakg_3spLx22r
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          KS_PATH="$RUNNER_TEMP/chelsy-release.jks"
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$KS_PATH"
+            { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$KS_PASS";
+              echo "CHELSY_KEY_ALIAS=$KEY_ALIAS"; echo "CHELSY_KEY_PASSWORD=$KEY_PASS"; } >> "$GITHUB_ENV"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 not set: signing with a one-time key. Future APKs will not install as updates over this one."
+            PASS=$(openssl rand -hex 24)
+            keytool -genkeypair -v -keystore "$KS_PATH" -alias chelsy -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass "$PASS" -keypass "$PASS" -dname "CN=Chelsy AI test build, O=Chelsy Group" >/dev/null
+            echo "::add-mask::$PASS"
+            { echo "CHELSY_KEYSTORE_PATH=$KS_PATH"; echo "CHELSY_KEYSTORE_PASSWORD=$PASS";
+              echo "CHELSY_KEY_ALIAS=chelsy"; echo "CHELSY_KEY_PASSWORD=$PASS"; } >> "$GITHUB_ENV"
+          fi
+      - name: Build release APK (public Supabase URL + publishable key only)
+        working-directory: Android_Client
+        run: |
+          URL=$(python3 -c "import json;print(json.load(open('../ChelsyAI_0.9_Windows/site_supabase_public.json'))['url'])")
+          KEY=$(python3 -c "import json;print(json.load(open('../ChelsyAI_0.9_Windows/site_supabase_public.json'))['publishable_key'])")
+          case "$KEY" in sb_secret_*) echo "Refusing to embed a secret key"; exit 1;; esac
+          flutter build apk --release --obfuscate --split-debug-info=build/symbols \
+            --dart-define=SUPABASE_URL="$URL" --dart-define=SUPABASE_KEY="$KEY"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/ChelsyAI_Android_0.9.3.apk
+      - name: Verify APK signature and manifest
+        working-directory: Android_Client
+        run: |
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs dist/ChelsyAI_Android_0.9.3.apk
+          "$AAPT" dump permissions dist/ChelsyAI_Android_0.9.3.apk
+          "$AAPT" dump xmltree dist/ChelsyAI_Android_0.9.3.apk --file AndroidManifest.xml > manifest.txt
+          grep -q 'android:allowBackup(.*)=(type 0x12)0x0' manifest.txt
+          grep -q 'android:usesCleartextTraffic(.*)=(type 0x12)0x0' manifest.txt
+          if grep -q 'android:debuggable(.*)=(type 0x12)0xffffffff' manifest.txt; then echo "APK is debuggable"; exit 1; fi
+          (cd dist && sha256sum ChelsyAI_Android_0.9.3.apk > SHA256SUMS.txt)
+          rm -f "$RUNNER_TEMP/chelsy-release.jks"
+      - uses: actions/upload-artifact@v4
         with:
-          name: ChelsyAI-0.9-Android-APK
-          path: Android_Client/build/app/outputs/flutter-apk/app-release.apk
+          name: ChelsyAI-0.9.3-Android
+          path: Android_Client/dist/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ChelsyAI-0.9.3-Android-symbols
+          path: Android_Client/build/symbols/
+          retention-days: 30

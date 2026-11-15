@@ -201,6 +201,10 @@ class ChelsyClientApp:
         style.configure('TCheckbutton', background=BG, foreground=TEXT)
         style.map('TCheckbutton', background=[('active', BG)])
         style.configure('TCombobox', fieldbackground=PANEL2, background=PANEL2, foreground=TEXT, arrowcolor=LAVENDER)
+        style.map('TCombobox', fieldbackground=[('readonly', PANEL2)], foreground=[('readonly', TEXT)],
+                  selectbackground=[('readonly', PANEL2)], selectforeground=[('readonly', TEXT)])
+        self.root.option_add('*TCombobox*Listbox.background', PANEL2)
+        self.root.option_add('*TCombobox*Listbox.foreground', TEXT)
         style.configure('TEntry', fieldbackground=PANEL2, foreground=TEXT, insertcolor=TEXT)
         style.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=TEXT, rowheight=26)
         style.configure('Treeview.Heading', background=PANEL2, foreground=TEXT)
@@ -325,6 +329,37 @@ class ChelsyClientApp:
         self.pulse.pack(side='left')
         self.status_label = Label(status_box, text='Подключение…', bg=PANEL, fg=MUTED, font=('Segoe UI', 9))
         self.status_label.pack(side='left', padx=(6, 0))
+        compose = Frame(content, bg=PANEL2, highlightthickness=1, highlightbackground='#3A3474', padx=8, pady=6)
+        self.input = Text(compose, height=3, wrap='word', bg=PANEL2, fg=TEXT, insertbackground=TEXT, borderwidth=0,
+                          highlightthickness=0, font=('Segoe UI', 11))
+        self.input.pack(side='left', fill='both', expand=True)
+        self.input.bind('<Return>', self._enter)
+        self.input.bind('<Shift-Return>', lambda e: None)
+        buttons = Frame(compose, bg=PANEL2)
+        buttons.pack(side='right', padx=(6, 0))
+        self.send_button = ttk.Button(buttons, text='➤', width=4, style='Accent.TButton', command=self.send)
+        self.send_button.pack(side='top', pady=1)
+        self.stop_button = ttk.Button(buttons, text='■', width=4, style='Stop.TButton', command=self.stop)
+        self.stop_button.pack(side='top', pady=1)
+        self.stop_button.state(['disabled'])
+        opts = ttk.Frame(content)
+        self.model_var = StringVar()
+        self.model_box = ttk.Combobox(opts, textvariable=self.model_var, state='readonly', width=22)
+        self.model_box.pack(side='left')
+        self.web_var = BooleanVar(value=self.saved.get('web', True))
+        ttk.Checkbutton(opts, text='🌐 Поиск в интернете', variable=self.web_var,
+                        command=lambda: self._remember(web=self.web_var.get())).pack(side='left', padx=10)
+        self.attachments = []
+        self.attach_label = ttk.Label(opts, text='', style='Muted.TLabel')
+        for text, cmd in (('📎', self.attach), ('↻ Повторить', self.regenerate), ('✎ Изменить', self.edit_last),
+                          ('⧉ Копировать', self.copy_answer)):
+            ttk.Button(opts, text=text, command=cmd).pack(side='left', padx=2)
+        self.attach_label.pack(side='left', padx=8)
+        # Bottom widgets are packed first so they stay visible on small or scaled screens.
+        ttk.Label(content, text='Enter — отправить · Shift+Enter — новая строка · ответы могут содержать ошибки',
+                  style='Muted.TLabel').pack(side='bottom', anchor='w', pady=(4, 0))
+        opts.pack(side='bottom', fill='x', pady=(6, 0))
+        compose.pack(side='bottom', fill='x')
         chat_frame = Frame(content, bg=BG)
         chat_frame.pack(fill='both', expand=True, pady=(10, 8))
         self.chat = Text(chat_frame, wrap='word', bg=BG, fg=TEXT, insertbackground=TEXT, borderwidth=0,
@@ -347,36 +382,6 @@ class ChelsyClientApp:
         self.chat.tag_bind('link', '<Enter>', lambda e: self.chat.configure(cursor='hand2'))
         self.chat.tag_bind('link', '<Leave>', lambda e: self.chat.configure(cursor=''))
 
-        compose = Frame(content, bg=PANEL2, highlightthickness=1, highlightbackground='#3A3474', padx=8, pady=6)
-        compose.pack(fill='x')
-        self.input = Text(compose, height=3, wrap='word', bg=PANEL2, fg=TEXT, insertbackground=TEXT, borderwidth=0,
-                          highlightthickness=0, font=('Segoe UI', 11))
-        self.input.pack(side='left', fill='both', expand=True)
-        self.input.bind('<Return>', self._enter)
-        self.input.bind('<Shift-Return>', lambda e: None)
-        buttons = Frame(compose, bg=PANEL2)
-        buttons.pack(side='right', padx=(6, 0))
-        self.send_button = ttk.Button(buttons, text='➤', width=4, style='Accent.TButton', command=self.send)
-        self.send_button.pack(side='top', pady=1)
-        self.stop_button = ttk.Button(buttons, text='■', width=4, style='Stop.TButton', command=self.stop)
-        self.stop_button.pack(side='top', pady=1)
-        self.stop_button.state(['disabled'])
-        opts = ttk.Frame(content)
-        opts.pack(fill='x', pady=(6, 0))
-        self.model_var = StringVar()
-        self.model_box = ttk.Combobox(opts, textvariable=self.model_var, state='readonly', width=22)
-        self.model_box.pack(side='left')
-        self.web_var = BooleanVar(value=self.saved.get('web', True))
-        ttk.Checkbutton(opts, text='🌐 Поиск в интернете', variable=self.web_var,
-                        command=lambda: self._remember(web=self.web_var.get())).pack(side='left', padx=10)
-        self.attachments = []
-        self.attach_label = ttk.Label(opts, text='', style='Muted.TLabel')
-        for text, cmd in (('📎', self.attach), ('↻ Повторить', self.regenerate), ('✎ Изменить последнее', self.edit_last),
-                          ('⧉ Копировать ответ', self.copy_answer)):
-            ttk.Button(opts, text=text, command=cmd).pack(side='left', padx=2)
-        self.attach_label.pack(side='left', padx=8)
-        ttk.Label(content, text='Enter — отправить · Shift+Enter — новая строка · ответы могут содержать ошибки',
-                  style='Muted.TLabel').pack(anchor='w', pady=(4, 0))
         return main
 
     # ------------------------------------------------------------------ helpers
@@ -418,6 +423,9 @@ class ChelsyClientApp:
                 continue
             if in_code:
                 self.chat.insert(END, line + '\n', 'code')
+                continue
+            if line.strip() == '---':
+                self.chat.insert(END, '─' * 40 + '\n', 'muted')
                 continue
             m = re.match(r'^(#{1,4})\s+(.*)', line)
             if m:
