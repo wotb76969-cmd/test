@@ -16,7 +16,7 @@ _MAX_RESPONSE = 240_000
 def fetch_json(base, parameters, headers=None):
     """Read JSON from a fixed, developer-selected HTTPS endpoint."""
     url = base + '?' + urlencode(parameters)
-    request = Request(url, headers={'User-Agent': 'ChelsyAI/0.9.1 (personal assistant)', 'Accept':'application/json', **(headers or {})})
+    request = Request(url, headers={'User-Agent': 'ChelsyAI/0.9.3 (personal assistant)', 'Accept':'application/json', **(headers or {})})
     with _OPENER.open(request, timeout=9) as response:
         content = response.read(_MAX_RESPONSE + 1)
         if len(content) > _MAX_RESPONSE:
@@ -68,12 +68,97 @@ def weather(question):
     return result, [{'url':'https://open-meteo.com/', 'title':'Open-Meteo', 'excerpt': str(current), 'kind':'weather'}]
 
 
+_RESEARCH = re.compile(
+    r'^(?:пожалуйста[,\s]+)?(?:изучи|исследуй|проштудируй|проиндексируй|прочитай\s+и\s+запомни)\b'
+    r'|^(?:please\s+)?(?:study|research|index|learn\s+from)\s+(?:the\s+)?(?:docs|documentation|site|website|page|source|https?://)', re.I)
+_NEWS = re.compile(r'(?:новост|что\s+(?:произошло|случилось|нового)|последние\s+событи|headlines|\bnews\b|what\s+happened)', re.I)
+_WEB = re.compile(
+    r'(?:найди|поищи|проверь\s+в\s+(?:интернете|сети)|загугли|поиск\s+в\s+интернете|в\s+интернете|в\s+сети|'
+    r'последн(?:ий|яя|ее|ие|юю)\s+(?:верси|релиз|курс)|свеж(?:ие|ая|ий)|сегодня|сейчас|на\s+данный\s+момент|актуальн|'
+    r'курс\s+(?:доллара|евро|рубля|биткоин)|сколько\s+стоит|цена\s+на|в\s+20[2-9]\d\s+году|'
+    r'latest|recent|current(?:ly)?\b|search\s+online|look\s+up|today|right\s+now|price\s+of)', re.I)
+_SMALLTALK = re.compile(
+    r'^(?:привет\w*|здравствуй\w*|добр(?:ое|ый)\s+\w+|хай|ку|как\s+(?:дела|ты|жизнь|настроение)\w*|что\s+делаешь|спасибо\w*|'
+    r'пока|hi|hello|hey|how\s+are\s+you|thanks?|thank\s+you|good\s+(?:morning|evening|night))\b', re.I)
+URL_IN_TEXT = re.compile(r'https?://[^\s<>"\'«»]+', re.I)
+
+
+def route(question, web_enabled=True):
+    """Classify a request: chat | local | weather | news | web | research.
+
+    The route only says what the request NEEDS. Whether a search actually
+    happens is decided (and honestly reported) by the intelligence engine.
+    """
+    q = re.sub(r'\s+', ' ', (question or '')).strip()
+    low = q.casefold()
+    if is_weather(low):
+        return 'weather'
+    if _RESEARCH.search(low):
+        return 'research'
+    if _NEWS.search(low):
+        return 'news'
+    if _SMALLTALK.search(low) and len(q) < 60:
+        return 'chat'
+    if _WEB.search(low):
+        return 'web'
+    return 'local'
+
+
 def search_intent(question):
-    q = question.lower().strip()
-    if is_weather(q): return 'weather'
-    if re.search(r'(?:найди|поищи|проверь|загугли|поиск в интернете|в интернете|в сети|последни[ея]|свежи[ея]|новост[ьи]|сегодня|сейчас|на данный момент|актуальн|latest|recent|search online|look up|news today)', q):
+    """0.9.2 compatible view of route(): 'weather', 'web' or None."""
+    kind = route(question)
+    if kind == 'weather':
+        return 'weather'
+    if kind in ('web', 'news'):
         return 'web'
     return None
+
+
+_NET = {'value': None, 'stamp': 0.0}
+
+
+def internet_available(ttl=30.0):
+    """Cheap connectivity probe (TCP to the search/weather APIs). Cached."""
+    import socket
+    import time
+    if os.environ.get('CHELSY_OFFLINE') == '1':
+        return False
+    now = time.monotonic()
+    if _NET['value'] is not None and now - _NET['stamp'] < ttl:
+        return _NET['value']
+    ok = False
+    for host in ('api.search.brave.com', 'api.open-meteo.com'):
+        try:
+            with socket.create_connection((host, 443), timeout=2.5):
+                ok = True
+                break
+        except OSError:
+            continue
+    _NET['value'], _NET['stamp'] = ok, now
+    return ok
+
+
+def brave_news(question):
+    """Fresh news with publication dates via Brave News Search API."""
+    key = os.environ.get('CHELSY_BRAVE_SEARCH_KEY', '').strip()
+    if not key:
+        return [], ('Для поиска свежих новостей нужен ключ Brave Search API. На ноутбуке-хосте '
+                    'задай CHELSY_BRAVE_SEARCH_KEY; клиентам ключ не передаётся.')
+    freshness = 'pd' if re.search(r'(сегодня|today|сейчас|now)', question, re.I) else 'pw'
+    response = fetch_json('https://api.search.brave.com/res/v1/news/search', {
+        'q': question[:400], 'count': 8, 'safesearch': 'moderate', 'freshness': freshness,
+    }, headers={'X-Subscription-Token': key})
+    items = []
+    for result in (response.get('results') or [])[:8]:
+        url = str(result.get('url', ''))
+        if not url.startswith('https://'):
+            continue
+        items.append({'url': url[:700], 'title': str(result.get('title', ''))[:180],
+                      'excerpt': re.sub('<[^>]+>', '', str(result.get('description', '')))[:600],
+                      'published': str(result.get('page_age') or result.get('age') or '')[:40],
+                      'source': str((result.get('meta_url') or {}).get('hostname', ''))[:120],
+                      'kind': 'news'})
+    return items, '' if items else 'Поиск новостей не вернул результатов.'
 
 
 def brave_search(question):
@@ -87,7 +172,8 @@ def brave_search(question):
     for result in (response.get('web') or {}).get('results',[])[:5]:
         url = str(result.get('url',''))
         if not url.startswith('https://'): continue
-        items.append({'url':url[:700], 'title':str(result.get('title',''))[:180], 'excerpt':re.sub('<[^>]+>','',str(result.get('description','')))[:850], 'kind':'web'})
+        items.append({'url':url[:700], 'title':str(result.get('title',''))[:180], 'excerpt':re.sub('<[^>]+>','',str(result.get('description','')))[:850],
+                      'published': str(result.get('page_age') or result.get('age') or '')[:40], 'kind':'web'})
     return items, '' if items else 'Поиск не вернул подходящих результатов.'
 
 

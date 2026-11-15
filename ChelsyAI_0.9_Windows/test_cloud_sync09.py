@@ -35,6 +35,9 @@ class CloudSyncTests(unittest.TestCase):
                 return []
             raise AssertionError(method)
         if table=='chelsy_ai_memories':return []
+        if table=='chelsy_ai_conversations':
+            # 0.9.3: emulate a cloud that only has the 0.9.2 schema (001/002).
+            raise cloud_sync.SyncError('relation does not exist',404)
         raise AssertionError(table)
 
     def test_idempotent_upload_two_accounts(self):
