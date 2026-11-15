@@ -6,7 +6,6 @@ import subprocess
 import sys
 import traceback
 from pathlib import Path
-from tkinter import Tk, messagebox, simpledialog
 
 # PyInstaller --windowed sets sys.stdout/sys.stderr to None on Windows.
 # Uvicorn's DefaultFormatter calls sys.stderr.isatty(), so redirect both
@@ -42,6 +41,7 @@ def find_ollama():
 
 
 def make_accounts():
+    from tkinter import messagebox, simpledialog
     if USERS_PATH.exists():
         import json
         try:
@@ -75,22 +75,23 @@ def make_accounts():
 
 
 def setup_model():
+    from tkinter import messagebox
     binary = find_ollama()
     if not binary or not ollama_available():
-        messagebox.showwarning('Chelsy AI — Ollama', 'Ollama пока не обнаружена или не запущена. Интерфейс откроется, но для ответов нужна Ollama и модель llama3.2:1b. Установить: https://ollama.com/download/windows')
+        messagebox.showwarning('Chelsy AI — Ollama', 'Ollama пока не обнаружена или не запущена. Интерфейс откроется, но для ответов нужна Ollama и хотя бы одна модель (рекомендуется qwen3:8b при 16 ГБ RAM или gemma3:4b на слабых ПК). Установить: https://ollama.com/download/windows')
         return
     try:
         import json
         from urllib.request import urlopen
         with urlopen('http://127.0.0.1:11434/api/tags',timeout=3) as response:
             models = json.load(response).get('models', [])
-        if any(m.get('name', '').startswith('llama3.2:1b') for m in models): return
+        if any(not any(h in m.get('name', '') for h in ('embed', 'bge', 'minilm')) for m in models): return
     except Exception: pass
-    if messagebox.askyesno('Chelsy AI — модель', 'Скачать модель llama3.2:1b? Для этого нужен интернет и свободное место на диске. Загрузка может занять время.'):
+    if messagebox.askyesno('Chelsy AI — модель', 'Скачать модель qwen3:4b (около 2,5 ГБ, хороший русский язык)? Для этого нужен интернет и свободное место на диске.'):
         messagebox.showinfo('Chelsy AI', 'Начинается загрузка модели. Откроется консоль с индикатором прогресса. Дождитесь завершения.')
-        result = subprocess.run([binary, 'pull', 'llama3.2:1b'], check=False)
+        result = subprocess.run([binary, 'pull', 'qwen3:4b'], check=False)
         if result.returncode != 0:
-            messagebox.showwarning('Chelsy AI', 'Модель не удалось загрузить. Позже выполните: ollama pull llama3.2:1b')
+            messagebox.showwarning('Chelsy AI', 'Модель не удалось загрузить. Позже выполните: ollama pull qwen3:4b')
 
 
 def choose_ui_port():
@@ -115,6 +116,7 @@ def choose_ui_port():
 
 
 def main():
+    from tkinter import Tk, messagebox
     root = Tk()
     root.withdraw()
     try:
@@ -122,14 +124,19 @@ def main():
         if auth_config() is None and not make_accounts(): return
         setup_model()
         root.destroy()
-        from app import build, authenticate, CSS, asset_path
-        import gradio as gr
+        import core
+        import migrations
+        # Versioned schema upgrade with an automatic backup of existing data.
+        migrations.migrate(core.DB_PATH, log=lambda line: print('[Migrations]', line, flush=True))
+        from app import build, authenticate, asset_path, launch_kwargs, is_admin_key
+        from knowledge import services
+        services()['scheduler'].start(owner_check=is_admin_key)
         app = build()
-        app.queue(default_concurrency_limit=1, api_open=False)
+        app.queue(default_concurrency_limit=2, api_open=False)
         app.launch(server_name='127.0.0.1',server_port=choose_ui_port(),share=False,
-                   auth=authenticate,auth_message='Вход в Chelsy AI',
+                   auth=authenticate,auth_message='Вход в Chelsy AI — используй аккаунт Chelsy Group',
                    inbrowser=True,show_error=False,enable_monitoring=False,
-                   css=CSS,favicon_path=str(asset_path('chelsy.ico')),theme=gr.themes.Soft(primary_hue='violet',neutral_hue='slate'))
+                   favicon_path=str(asset_path('chelsy.ico')), **launch_kwargs())
     except Exception:
         logfile = Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'ChelsyAI' / 'error.log'
         logfile.parent.mkdir(parents=True,exist_ok=True)

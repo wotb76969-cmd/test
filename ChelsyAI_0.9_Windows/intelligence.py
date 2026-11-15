@@ -379,7 +379,7 @@ class ChelsyEngine:
             live_context += ('\nСравни независимые источники между собой.' if language == 'ru'
                              else '\nCompare the independent sources.')
 
-        model_name = self.llm.resolve_model(model, settings.get('model') or core.MODEL)
+        model_name = self.llm.resolve_model(model, settings.get('model') or os.environ.get('CHELSY_MODEL') or None)
         length = rq.complexity(question)
         system = self.system_prompt(language, length, searched=searched, search_note=note, facts=facts,
                                     knowledge_context=knowledge_context, live_context=live_context, omitted=False,

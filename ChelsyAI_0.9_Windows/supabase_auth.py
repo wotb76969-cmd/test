@@ -15,6 +15,27 @@ class AuthError(Exception):
     pass
 
 
+def bundled_public_config():
+    """Public project URL + publishable key shipped with the installer (never a secret key)."""
+    import sys
+    base = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
+    try:
+        data = json.loads((base / 'site_supabase_public.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    if str(data.get('publishable_key', '')).startswith('sb_secret_'):
+        return {}
+    return {'url': data.get('url', ''), 'publishable_key': data.get('publishable_key', '')}
+
+
+_ALLOW_BUNDLED = {'value': False}
+
+
+def allow_bundled_config(flag=True):
+    """Standalone Windows Client: fall back to the bundled public project settings."""
+    _ALLOW_BUNDLED['value'] = bool(flag)
+
+
 def config():
     settings = {}
     settings_path = Path(os.environ.get('LOCALAPPDATA') or Path.home()) / 'ChelsyAI' / 'supabase.json'
@@ -23,6 +44,8 @@ def config():
             settings = json.loads(settings_path.read_text(encoding='utf-8'))
         except (ValueError, OSError):
             raise AuthError('Invalid Supabase configuration file')
+    elif _ALLOW_BUNDLED['value']:
+        settings = bundled_public_config()
     url = os.getenv('CHELSY_SUPABASE_URL', settings.get('url','')).strip().rstrip('/')
     key = os.getenv('CHELSY_SUPABASE_PUBLISHABLE_KEY', settings.get('publishable_key','')).strip()
     if not url and not key:
@@ -77,6 +100,49 @@ def verify(token):
     uid = result.get('id')
     if not isinstance(uid, str) or len(uid) < 10:
         raise AuthError('User identity not available')
+    return uid
+
+
+_VERIFY_CACHE = {}
+_VERIFY_LOCK = __import__('threading').Lock()
+
+
+def _jwt_exp(token):
+    import base64
+    try:
+        part = token.split('.')[1]
+        payload = json.loads(base64.urlsafe_b64decode(part + '=' * (-len(part) % 4)))
+        exp = payload.get('exp')
+        return float(exp) if isinstance(exp, (int, float)) else None
+    except (IndexError, ValueError, TypeError):
+        return None
+
+
+def verify_cached(token, ttl=90):
+    """verify() with a short in-memory cache keyed by the token hash.
+
+    Expired JWTs are rejected locally; a revoked session is noticed within
+    ``ttl`` seconds. Raw tokens are never stored, only their SHA-256.
+    """
+    import hashlib
+    import time
+    if not isinstance(token, str) or len(token) < 20 or len(token) > 10000:
+        raise AuthError('Invalid access token')
+    now = time.time()
+    exp = _jwt_exp(token)
+    if exp is not None and exp <= now:
+        raise AuthError('Access token expired')
+    key = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    with _VERIFY_LOCK:
+        hit = _VERIFY_CACHE.get(key)
+        if hit and hit[1] > now:
+            return hit[0]
+    uid = verify(token)
+    until = min(now + ttl, exp) if exp else now + ttl
+    with _VERIFY_LOCK:
+        if len(_VERIFY_CACHE) > 2000:
+            _VERIFY_CACHE.clear()
+        _VERIFY_CACHE[key] = (uid, until)
     return uid
 
 
