@@ -1,0 +1,3 @@
+# design plugin runtime state (configs that matter are committed)
+.impeccable/config.local.json
+.taste-skill/
